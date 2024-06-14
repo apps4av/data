@@ -30,6 +30,13 @@ jobs:
       run: |
         python3 data.py
 
+    - name: Upload release
+      uses: actions/upload-artifact@v4
+      with:
+        name: DATA 
+        path: |
+          databases.zip
+          
     - name: SSH to mamba
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -39,4 +46,3 @@ jobs:
         port: 22
         source: "databases.zip"
         target: /home/apps4av/mamba.dreamhosters.com/new/staging
-        
