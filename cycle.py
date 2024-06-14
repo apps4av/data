@@ -6,7 +6,7 @@ def get_cycle():
 
 
 def get_cycle_download():
-    return "2406"
+    return "2406" 
 
 
 def get_first_date(year):
