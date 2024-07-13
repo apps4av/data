@@ -3,7 +3,6 @@ import os
 import urllib.request
 import re
 from bs4 import BeautifulSoup
-from tqdm import tqdm
 from subprocess import check_call, check_output
 import zipfile
 from tqdm import tqdm
