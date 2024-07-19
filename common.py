@@ -6,8 +6,8 @@ from bs4 import BeautifulSoup
 from subprocess import check_call, check_output
 import zipfile
 from tqdm import tqdm
-import concurrent.futures
 import cycle
+import cifp
 
 states_in_regions = {
     "AK":  ["AK",],
@@ -73,6 +73,8 @@ def make_data():
     for script in tqdm(["saa", "airport", "runway", "freq", "fix", "nav", "dof", "awos", "aw"],
                        desc="Running PERL database files"):
         call_perl_script(script)
+    # CIFP too
+    cifp.parse_cifp()
 
 
 def make_db():
