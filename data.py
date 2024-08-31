@@ -12,6 +12,9 @@ all_charts = [
 
 common.download_list(all_charts)
 
+# copy all files from legacy folder
+common.call_script("cp legacy/* .")
+
 common.make_data()
 common.make_db()
 
