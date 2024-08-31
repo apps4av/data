@@ -29,9 +29,10 @@ while (<FILE>) {
     if (m/^APT/) {
         #sanitize input text for output to csv
         $_ =~ s/,|"/ /g;
+        $faaid = ltrim( rtrim( substr( $_, 27,  4 ) ) );
         $id   = ltrim( rtrim( substr( $_, 1210,  7 ) ) );
         if($id eq "") { # if ICAO not available, use FAA code
-            $id = ltrim( rtrim( substr( $_, 27,  4 ) ) );
+            $id = $faaid;
         }
         $dlid = ltrim( rtrim( substr( $_, 3,  11 ) ) );
         $type = ltrim( rtrim( substr( $_, 14,  12 ) ) );
@@ -97,7 +98,7 @@ while (<FILE>) {
         $tel    = ltrim( rtrim( substr( $_, 762, 16 ) ) );
 
         print
-"$id,$dlid,$lt,$ln,$type,$name,$use,$tel,$manager,$managertel,$elevation,$var,$patterna,$fuel,$custom,$beacon,$lightsched,$segcircle,$atct,$unicom,$ctaff,$fee,$state,$city\n";
+"$id,$dlid,$faaid,$lt,$ln,$type,$name,$use,$tel,$manager,$managertel,$elevation,$var,$patterna,$fuel,$custom,$beacon,$lightsched,$segcircle,$atct,$unicom,$ctaff,$fee,$state,$city\n";
     }
 }
 close(FILE);
