@@ -14,3 +14,9 @@ common.download_list(all_charts)
 
 common.make_data()
 common.make_db()
+
+# copy all files from x folder
+common.call_script("cp x/* .")
+
+common.make_data()
+common.make_db("x")

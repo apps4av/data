@@ -77,7 +77,7 @@ def make_data():
     cifp.parse_cifp()
 
 
-def make_db():
+def make_db(extra=""):
     try:
         os.unlink("main.db")
     except FileNotFoundError as e:
@@ -85,18 +85,16 @@ def make_db():
     call_script("sqlite3 main.db < importother.sql")
 
     try:
-        os.remove("databases.zip")
-        os.remove("databases")
+        os.remove("databases" + extra + ".zip")
+        os.remove("databases" + extra)
     except FileNotFoundError as e:
         pass
 
-    zip_file = zipfile.ZipFile("databases.zip", "w")
-    manifest_file = open("databases", "w+")
+    zip_file = zipfile.ZipFile("databases" + extra + ".zip", "w")
+    manifest_file = open("databases" + extra, "w+")
     manifest_file.write(cycle.get_cycle() + "\n")
     manifest_file.write("main.db\n")
     manifest_file.close()
-    zip_file.write("databases")
+    zip_file.write("databases" + extra)
     zip_file.write("main.db")
     zip_file.close()
-
-
