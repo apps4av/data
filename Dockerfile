@@ -7,6 +7,8 @@ RUN apt install python3 python3-pip gdal-bin python3-gdal -y
 WORKDIR /tmp/
 
 COPY *.py /tmp/
+COPY *.pgm /tmp/
+COPY *.csv /tmp/
 COPY *.pl /tmp/
 COPY *.sql /tmp/
 RUN ls /tmp/
