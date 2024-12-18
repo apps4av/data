@@ -60,7 +60,7 @@ def call_script_return(script):
 
 
 def call_perl_script(script):
-    check_call(["perl" + " " + script + ".pl > " + script + ".csv"], shell=True)
+    check_call(["perl" + " " + script + ".pl"], shell=True)
 
 
 def make_data():
