@@ -10,7 +10,9 @@ all_charts = [
     "https://aeronav.faa.gov/Upload_313-d/cifp/CIFP_" + start_date[2:].replace("-", "") + ".zip"
 ]
 
+print(all_charts)
 common.download_list(all_charts)
+
 
 # copy all files from legacy folder
 common.call_script("cp legacy/* .")
