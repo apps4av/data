@@ -4,8 +4,8 @@
 name: DATA
 
 on:
-  schedule:
-    - cron: '10 6 * * 0'  # Runs every Sunday at 6:10 AM UTC
+  pull_request:
+    branches: [ "master" ]
     
 permissions:
   contents: read
