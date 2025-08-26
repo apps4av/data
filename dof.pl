@@ -52,9 +52,7 @@ while (<FILE>) {
 		$ht = ltrim(rtrim(substr($_, 90, 5))) / 1;
 		$htagl = ltrim(rtrim(substr($_, 84, 5))) / 1;
     		#print "$lt,$ln,$ht,$htagl\n";
-        if($htagl >= 400)  {
     		print "$lt,$ln,$ht\n";
-        }
 	}
 }
 close(FILE);
