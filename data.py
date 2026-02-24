@@ -22,4 +22,9 @@ common.make_db()
 common.call_script("cp x/* .")
 
 common.make_data()
+
+# Convert shapefile to GeoJSON and generate airspace tiles before creating databasesx.zip
+common.call_script("ogr2ogr -f GeoJSON Additional_Data/Shape_Files/Class_Airspace.geojson Additional_Data/Shape_Files/Class_Airspace.shp")
+common.call_script("chmod +x generate_airspace_tiles.sh && ./generate_airspace_tiles.sh")
+
 common.make_db("x")

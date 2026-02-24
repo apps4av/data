@@ -94,7 +94,19 @@ def make_db(extra=""):
     manifest_file = open("databases" + extra, "w+")
     manifest_file.write(cycle.get_cycle() + "\n")
     manifest_file.write("main.db\n")
+
+    if extra == "x":
+        mbtiles_path = "maps/nasr.mbtiles"
+        if os.path.isfile(mbtiles_path):
+            manifest_file.write("maps/nasr.mbtiles\n")
+
     manifest_file.close()
     zip_file.write("databases" + extra)
     zip_file.write("main.db")
+
+    if extra == "x":
+        mbtiles_path = "maps/nasr.mbtiles"
+        if os.path.isfile(mbtiles_path):
+            zip_file.write(mbtiles_path, "maps/nasr.mbtiles")
+
     zip_file.close()
