@@ -36,6 +36,9 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
+POLYGONS_FILE="${OUTPUT_DIR}/polygons.mbtiles"
+LABELS_FILE="${OUTPUT_DIR}/labels.mbtiles"
+
 echo ""
 echo "=========================================="
 echo "Generating Airspace MBTiles"
@@ -47,38 +50,52 @@ fi
 echo "Output:         $OUTPUT_FILE"
 echo ""
 
-# Build tippecanoe command with available layers
-# -r1 or --drop-rate=1: Don't drop any features
-# -pk: No tile size limit
-# -pf: No feature limit
-# --gamma=0: Don't gamma-correct (prevents polygon thinning)
-TIPPECANOE_ARGS=(
-    --output="$OUTPUT_FILE"
+# Step 1: Generate polygon layers
+echo "Generating polygon layers..."
+POLYGON_ARGS=(
+    --output="$POLYGONS_FILE"
     --force
-    --name="Airspace"
-    --description="FAA Class Airspace and Special Use Airspace"
     --minimum-zoom=0
     --maximum-zoom=10
     --drop-rate=1
     --no-tile-size-limit
     --no-feature-limit
     --gamma=0
-)
-
-# Add Class Airspace layer
-TIPPECANOE_ARGS+=(
+    --no-line-simplification
+    --no-tiny-polygon-reduction
     --named-layer="class_airspace:$CLASS_AIRSPACE_FILE"
 )
-
-# Add SUA layer if available
 if [ -f "$SUA_AIRSPACE_FILE" ]; then
-    TIPPECANOE_ARGS+=(
-        --named-layer="sua_airspace:$SUA_AIRSPACE_FILE"
-    )
+    POLYGON_ARGS+=(--named-layer="sua_airspace:$SUA_AIRSPACE_FILE")
 fi
+tippecanoe "${POLYGON_ARGS[@]}"
 
-echo "Running tippecanoe..."
-tippecanoe "${TIPPECANOE_ARGS[@]}"
+# Step 2: Generate label point layers (centroids)
+echo "Generating label point layers..."
+LABEL_ARGS=(
+    --output="$LABELS_FILE"
+    --force
+    --minimum-zoom=5
+    --maximum-zoom=10
+    --drop-rate=1
+    --no-tile-size-limit
+    --no-feature-limit
+    --convert-polygons-to-label-points
+    --named-layer="class_airspace_labels:$CLASS_AIRSPACE_FILE"
+)
+if [ -f "$SUA_AIRSPACE_FILE" ]; then
+    LABEL_ARGS+=(--named-layer="sua_airspace_labels:$SUA_AIRSPACE_FILE")
+fi
+tippecanoe "${LABEL_ARGS[@]}"
+
+# Step 3: Combine into final output
+echo "Combining layers..."
+tile-join --output="$OUTPUT_FILE" --force --name="Airspace" \
+    --description="FAA Class Airspace and Special Use Airspace" \
+    "$POLYGONS_FILE" "$LABELS_FILE"
+
+# Cleanup temp files
+rm -f "$POLYGONS_FILE" "$LABELS_FILE"
 
 echo ""
 echo "=========================================="
@@ -88,7 +105,9 @@ ls -lh "$OUTPUT_FILE"
 
 echo ""
 echo "Layers included:"
-echo "  - class_airspace (Class B, C, D, E airspace)"
+echo "  - class_airspace (Class B, C, D, E airspace polygons)"
+echo "  - class_airspace_labels (Class airspace label points)"
 if [ -f "$SUA_AIRSPACE_FILE" ]; then
-    echo "  - sua_airspace (MOAs, Restricted, Warning, Alert, Prohibited, NSA)"
+    echo "  - sua_airspace (MOAs, Restricted, Warning, Alert, Prohibited, NSA polygons)"
+    echo "  - sua_airspace_labels (SUA label points)"
 fi
