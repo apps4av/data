@@ -36,7 +36,6 @@ tippecanoe \
     --drop-densest-as-needed \
     --include="NAME" \
     --include="CLASS" \
-    --include="LOCAL_TYPE" \
     --include="LOWER_VAL" \
     --include="UPPER_VAL" \
     "$INPUT_FILE"
