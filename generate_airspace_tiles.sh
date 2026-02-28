@@ -34,11 +34,11 @@ tippecanoe \
     --simplification=15 \
     --detect-shared-borders \
     --drop-densest-as-needed \
-    --generate-polygon-centers \
     --include="NAME" \
     --include="CLASS" \
     --include="LOCAL_TYPE" \
     --include="LOWER_VAL" \
+    --include="UPPER_VAL" \
     "$INPUT_FILE"
 
 echo ""
