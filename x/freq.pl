@@ -45,12 +45,32 @@ while (<FILE>) {
 				($type =~ "LCL") ||
 				($type =~ "EMERG") ||
 				($type =~ "GATE") ||
-				($type =~ "CD")) {
+				($type =~ "CD") ||
+				($type =~ /APCH\/P DEP\/P/)) {
 				print "$id,$type,$freq\n";
 			}
 			
 		}
 		
+	}
+	if(m/^TWR7/) {
+		my $line = $_;
+		# Satellite airport site number (same style as TWR1 landing facility id)
+		my $fid = ltrim(rtrim(substr($line, 102, 11)));
+		if($fid eq "") {
+			$fid = $id;
+		}
+		$_ = substr($_, 8, length($_));
+		while(length($_) > 93) {
+			$freq=ltrim(rtrim(substr($_, 0, 44)));
+			$freq =~ s/,/;/g;
+			$type=ltrim(rtrim(substr($_, 44, 50)));
+			$type =~ s/,/;/g;
+			$_ = substr($_, 94, length($_));
+			if($type =~ /APCH\/P DEP\/P/) {
+				print "$fid,$type,$freq\n";
+			}
+		}
 	}
 	if(m/^TWR6/) {
 		$attend = ltrim(rtrim(substr($_, 13, length($_))));
