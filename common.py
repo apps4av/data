@@ -8,6 +8,7 @@ import zipfile
 from tqdm import tqdm
 import cycle
 import cifp
+import procedures
 
 states_in_regions = {
     "AK":  ["AK",],
@@ -75,6 +76,9 @@ def make_data():
         call_perl_script(script)
     # CIFP too
     cifp.parse_cifp()
+    # CIFP transition sequences (procedures table); uses the d-TPP metafile for
+    # readable names when present, otherwise synthesizes them.
+    procedures.parse_procedures()
 
 
 def make_db(extra=""):

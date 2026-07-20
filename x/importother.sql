@@ -36,3 +36,6 @@ CREATE TABLE cifp_sid_star_app(record_type Text,customer_area_code Text,section_
 
 CREATE TABLE geo(Latitude float, Longitude float, height float, declination float);
 .import geo.csv geo
+
+CREATE TABLE procedures(airport Text, procedure Text, initial_fix Text, sequence Text, fix Text, altitude Text);
+.import procedures.csv procedures
