@@ -7,7 +7,13 @@ IAFs becomes several sequences).
 
 Output columns (no header, so it loads with sqlite ``.import``)::
 
-    airport, procedure, initial_fix, sequence, fix, altitude
+    airport, procedure, initial_fix, sequence, fix, altitude,
+    latitude, longitude, bearing
+
+``latitude``/``longitude`` are decimal degrees looked up from the CIFP fix
+records (waypoints, navaids, runways, airports). ``bearing`` is the magnetic
+course to the fix (the initial great-circle course from the previous fix,
+adjusted by the airport magnetic variation); it is blank for the first fix.
 
 Procedure names come from the d-TPP metafile (``d-TPP_Metafile.xml``) when it is
 present: SIDs/STARs link through the ``faanfd18`` field, approaches are matched
@@ -18,6 +24,7 @@ Stdlib only.
 """
 
 import csv
+import math
 import os
 import re
 from collections import OrderedDict
@@ -47,7 +54,8 @@ _COMMON_TRANSITION_IDS = frozenset({"", "ALL"})
 class Leg(object):
     __slots__ = (
         "airport", "subsection", "route_id", "route_type", "transition_id",
-        "seq_no", "fix_id", "wp_desc", "alt1",
+        "seq_no", "fix_id", "fix_region", "fix_section", "fix_subsection",
+        "wp_desc", "alt1",
     )
 
     def __init__(self, line):
@@ -58,8 +66,15 @@ class Leg(object):
         self.transition_id = line[20:25].strip()
         self.seq_no = line[26:29].strip()
         self.fix_id = line[29:34].strip()
+        self.fix_region = line[34:36].strip()
+        self.fix_section = line[36:37]
+        self.fix_subsection = line[37:38]
         self.wp_desc = line[39:43]
         self.alt1 = line[84:89].strip()
+
+    @property
+    def fix_key(self):
+        return (self.fix_id, self.fix_region, self.fix_section, self.fix_subsection)
 
     @property
     def is_map(self):
@@ -98,6 +113,105 @@ def read_legs(path):
                 continue
             legs.append(Leg(line))
     return legs
+
+
+# ---------------------------------------------------------------------------
+# Coordinates and magnetic variation
+# ---------------------------------------------------------------------------
+
+_LAT_RE = re.compile(r"^[NS]\d{8}$")   # sign + DDMMSSss
+_LON_RE = re.compile(r"^[EW]\d{9}$")   # sign + DDDMMSSss
+
+
+def _dms_to_decimal(value):
+    sign = 1 if value[0] in "NE" else -1
+    body = value[1:]
+    if value[0] in "NS":
+        deg, mm, ss, hs = int(body[0:2]), int(body[2:4]), int(body[4:6]), int(body[6:8])
+    else:
+        deg, mm, ss, hs = int(body[0:3]), int(body[3:5]), int(body[5:7]), int(body[7:9])
+    return sign * (deg + mm / 60.0 + (ss + hs / 100.0) / 3600.0)
+
+
+def _parse_variation(value):
+    """Parse an ARINC magnetic variation field, e.g. ``W0160`` -> -16.0.
+
+    Returned east-positive (E is positive, W negative) so that
+    ``magnetic = true - variation``.
+    """
+    value = (value or "").strip()
+    if len(value) < 2 or value[0] not in "EWTG":
+        return None
+    digits = value[1:]
+    if not digits.isdigit():
+        return None
+    deg = int(digits) / 10.0
+    return deg if value[0] in "ET" else -deg
+
+
+def read_reference_data(path):
+    """Return ``(terminal, enroute, variation)`` coordinate indexes from CIFP.
+
+    Terminal fixes (section ``P``: airport waypoints, runways, localizers,
+    airports) are keyed by ``(airport, identifier, section, subsection)`` because
+    identifiers such as ``RW16`` are only unique within an airport, not within
+    an ICAO region. Enroute waypoints and navaids (sections ``E`` / ``D``) are
+    keyed by ``(identifier, region, section, subsection)``.
+    ``variation`` maps airport ICAO -> magnetic variation (east-positive).
+    """
+    terminal = {}
+    enroute = {}
+    variation = {}
+    with open(path, "r", encoding="latin-1") as fh:
+        for line in fh:
+            if len(line) < 51:
+                continue
+            section = line[4]
+            lat, lon = line[32:41], line[41:51]
+            if not (_LAT_RE.match(lat) and _LON_RE.match(lon)) and section == "D":
+                # DME/TACAN records leave the primary position blank; the
+                # navaid position is in the second coordinate field.
+                lat, lon = line[55:64], line[64:74]
+            if _LAT_RE.match(lat) and _LON_RE.match(lon):
+                point = (_dms_to_decimal(lat), _dms_to_decimal(lon))
+                if section == "P":
+                    subsection = line[12]
+                    airport = line[6:10].strip()
+                    ident = airport if subsection == "A" else line[13:18].strip()
+                    if ident:
+                        terminal.setdefault((airport, ident, section, subsection), point)
+                else:  # enroute (E) waypoint or navaid (D / DB)
+                    subsection = line[5]
+                    ident = line[13:18].strip()
+                    region = line[19:21].strip()
+                    if ident:
+                        enroute.setdefault((ident, region, section, subsection), point)
+            if section == "P" and line[12] == "A":
+                var = _parse_variation(line[51:56])
+                if var is not None:
+                    variation[line[6:10].strip()] = var
+    return terminal, enroute, variation
+
+
+def lookup_coords(terminal, enroute, airport, fix_key):
+    """Resolve ``(lat, lon)`` for a leg's fix, or ``None``."""
+    fix_id, region, section, subsection = fix_key
+    if section == "P":
+        point = terminal.get((airport, fix_id, section, subsection))
+        if point is None and subsection == "N":
+            # Terminal NDBs are often only stored as enroute NDB (D/B) records.
+            point = enroute.get((fix_id, region, "D", "B"))
+        return point
+    return enroute.get((fix_id, region, section, subsection))
+
+
+def initial_bearing(lat1, lon1, lat2, lon2):
+    """Initial great-circle (true) bearing from point 1 to point 2, degrees."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlon = math.radians(lon2 - lon1)
+    y = math.sin(dlon) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dlon)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
 
 
 # ---------------------------------------------------------------------------
@@ -386,8 +500,11 @@ def _truncate_at_map(legs):
 
 
 def _collapse(legs):
-    """Drop fix-less legs and collapse consecutive duplicate fixes."""
-    out = []  # list of [fix, altitude]
+    """Drop fix-less legs and collapse consecutive duplicate fixes.
+
+    Returns a list of ``[fix_id, altitude, fix_key]``.
+    """
+    out = []
     for leg in legs:
         if not leg.fix_id:
             continue
@@ -395,7 +512,7 @@ def _collapse(legs):
             if out[-1][1] is None:
                 out[-1][1] = leg.altitude
             continue
-        out.append([leg.fix_id, leg.altitude])
+        out.append([leg.fix_id, leg.altitude, leg.fix_key])
     return out
 
 
@@ -424,8 +541,12 @@ def _partition(subsection, legs):
     return starts, common
 
 
-def build_sequences(legs, metafile):
-    """Yield rows ``(airport, procedure, initial_fix, sequence, fix, altitude)``."""
+def build_sequences(legs, metafile, terminal=None, enroute=None, variation=None):
+    """Yield rows ``(airport, procedure, initial_fix, sequence, fix, altitude,
+    latitude, longitude, bearing)``."""
+    terminal = terminal or {}
+    enroute = enroute or {}
+    variation = variation or {}
     # Group legs by (airport, subsection, route_id), preserving order.
     groups = OrderedDict()
     route_ids = {}
@@ -461,13 +582,26 @@ def build_sequences(legs, metafile):
         elif common:
             sequences.append(_collapse(common))
 
+        var = variation.get(airport)
         for fixes in sequences:
             if not fixes:
                 continue
             initial_fix = fixes[0][0]
-            for i, (fix, altitude) in enumerate(fixes, start=1):
+            prev_ll = None
+            for i, (fix, altitude, fix_key) in enumerate(fixes, start=1):
+                ll = lookup_coords(terminal, enroute, airport, fix_key)
+                lat = "" if ll is None else round(ll[0], 6)
+                lon = "" if ll is None else round(ll[1], 6)
+                bearing = ""
+                if prev_ll is not None and ll is not None:
+                    true_brg = initial_bearing(prev_ll[0], prev_ll[1], ll[0], ll[1])
+                    if var is not None:
+                        true_brg = (true_brg - var) % 360.0
+                    bearing = round(true_brg, 1)
+                if ll is not None:
+                    prev_ll = ll
                 yield (airport, procedure, initial_fix, i, fix,
-                       "" if altitude is None else altitude)
+                       "" if altitude is None else altitude, lat, lon, bearing)
 
 
 def _clean(value):
@@ -478,14 +612,14 @@ def _clean(value):
 def parse_procedures(cifp_path=CIFP_FILE, metafile_path=METAFILE, out_path=OUTPUT):
     legs = read_legs(cifp_path)
     metafile = parse_metafile(metafile_path)
+    terminal, enroute, variation = read_reference_data(cifp_path)
     with open(out_path, "w+", newline="") as fh:
         writer = csv.writer(fh)
-        for airport, procedure, initial_fix, seq, fix, altitude in build_sequences(
-            legs, metafile
-        ):
+        for row in build_sequences(legs, metafile, terminal, enroute, variation):
+            airport, procedure, initial_fix, seq, fix, altitude, lat, lon, bearing = row
             writer.writerow([
                 _clean(airport), _clean(procedure), _clean(initial_fix),
-                seq, _clean(fix), _clean(altitude),
+                seq, _clean(fix), _clean(altitude), lat, lon, bearing,
             ])
 
 
