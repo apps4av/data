@@ -74,8 +74,7 @@ def make_data():
     for script in tqdm(["saa", "airport", "runway", "freq", "fix", "nav", "dof", "awos", "aw"],
                        desc="Running PERL database files"):
         call_perl_script(script)
-    # CIFP too
-    cifp.parse_cifp()
+
     # CIFP transition sequences (procedures table); uses the d-TPP metafile for
     # readable names when present, otherwise synthesizes them.
     procedures.parse_procedures()

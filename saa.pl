@@ -300,9 +300,11 @@ while (my $file = readdir(DIR)) {
     if($file =~ m/\.xml/) {
         initnew();
         $parser->parsefile($direct.$file);
-        $lat = $lat / $numpos;
-        $lon = $lon / $numpos;
-        printf "%s,%s,%s %s,%s %s,%s,%s,%s,%s,%s,%s,%s,%s,%.4f,%.4f\n", $designator,$name,$upperlimit,$upperlimitref,$lowerlimit,$lowerlimitref,$starttime,$endtime,$timeref,$startdate,$enddate,$note,$ftx,$frx,$lat,$lon;
+        if($numpos > 0) {
+            $lat = $lat / $numpos;
+            $lon = $lon / $numpos;
+            printf "%s,%s,%s %s,%s %s,%s,%s,%s,%s,%s,%s,%s,%s,%.4f,%.4f\n", $designator,$name,$upperlimit,$upperlimitref,$lowerlimit,$lowerlimitref,$starttime,$endtime,$timeref,$startdate,$enddate,$note,$ftx,$frx,$lat,$lon;
+        }
     }
 }
 
