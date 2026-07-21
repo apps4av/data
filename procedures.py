@@ -8,8 +8,13 @@ IAFs becomes several sequences).
 Output columns (no header, so it loads with sqlite ``.import``)::
 
     airport, procedure, initial_fix, sequence, fix, altitude,
-    latitude, longitude, bearing
+    altitude_type, altitude2, latitude, longitude, bearing
 
+``altitude`` is the primary crossing altitude in feet (ARINC "altitude 1").
+``altitude_type`` describes the constraint: ``at``, ``above`` (at or above),
+``below`` (at or below), ``window`` (between ``altitude`` and ``altitude2``), or
+blank when the leg has no altitude. ``altitude2`` is the ARINC "altitude 2" in
+feet -- the bottom of a ``window``, or the glideslope altitude on precision legs.
 ``latitude``/``longitude`` are decimal degrees looked up from the CIFP fix
 records (waypoints, navaids, runways, airports). ``bearing`` is the magnetic
 course to the fix (the initial great-circle course from the previous fix,
@@ -55,7 +60,7 @@ class Leg(object):
     __slots__ = (
         "airport", "subsection", "route_id", "route_type", "transition_id",
         "seq_no", "fix_id", "fix_region", "fix_section", "fix_subsection",
-        "wp_desc", "alt1",
+        "wp_desc", "alt_desc", "alt1", "alt2",
     )
 
     def __init__(self, line):
@@ -70,7 +75,9 @@ class Leg(object):
         self.fix_section = line[36:37]
         self.fix_subsection = line[37:38]
         self.wp_desc = line[39:43]
+        self.alt_desc = line[82:83].strip()
         self.alt1 = line[84:89].strip()
+        self.alt2 = line[89:94].strip()
 
     @property
     def fix_key(self):
@@ -84,6 +91,25 @@ class Leg(object):
     @property
     def altitude(self):
         return parse_altitude(self.alt1)
+
+    @property
+    def altitude2(self):
+        return parse_altitude(self.alt2)
+
+    @property
+    def altitude_type(self):
+        if not self.alt1:
+            return ""
+        return _ALT_DESC.get(self.alt_desc, "at")
+
+
+# ARINC 424 altitude description code -> constraint meaning (see module docstring).
+_ALT_DESC = {
+    "": "at", "@": "at", "G": "at", "I": "at", "X": "at",
+    "+": "above", "C": "above", "H": "above", "J": "above", "V": "above", "Y": "above",
+    "-": "below",
+    "B": "window",
+}
 
 
 def parse_altitude(raw):
@@ -502,17 +528,20 @@ def _truncate_at_map(legs):
 def _collapse(legs):
     """Drop fix-less legs and collapse consecutive duplicate fixes.
 
-    Returns a list of ``[fix_id, altitude, fix_key]``.
+    Returns a list of ``[fix_id, altitude, altitude_type, altitude2, fix_key]``.
     """
     out = []
     for leg in legs:
         if not leg.fix_id:
             continue
         if out and out[-1][0] == leg.fix_id:
-            if out[-1][1] is None:
+            if out[-1][1] is None and leg.altitude is not None:
                 out[-1][1] = leg.altitude
+                out[-1][2] = leg.altitude_type
+                out[-1][3] = leg.altitude2
             continue
-        out.append([leg.fix_id, leg.altitude, leg.fix_key])
+        out.append([leg.fix_id, leg.altitude, leg.altitude_type,
+                    leg.altitude2, leg.fix_key])
     return out
 
 
@@ -557,6 +586,7 @@ def build_sequences(legs, metafile, terminal=None, enroute=None, variation=None)
         )
 
     sidstar_cache = {}
+    emitted = set()  # (airport, procedure, initial_fix) already produced
 
     for (airport, subsection, route_id), group in groups.items():
         charts = metafile.get(airport)
@@ -575,12 +605,27 @@ def build_sequences(legs, metafile, terminal=None, enroute=None, variation=None)
         if subsection == SUBSECTION_APPROACH:
             common = _truncate_at_map(common)
 
-        sequences = []
+        raw_sequences = []
         if starts:
             for transition_legs in starts.values():
-                sequences.append(_collapse(list(transition_legs) + list(common)))
+                raw_sequences.append(_collapse(list(transition_legs) + list(common)))
         elif common:
-            sequences.append(_collapse(common))
+            raw_sequences.append(_collapse(common))
+
+        # A procedure is identified by (airport, procedure, initial_fix), so
+        # collapse anything sharing that key: left/right runways that merge at
+        # the same first fix, and distinct CIFP ids that resolve to the same
+        # chart name (e.g. the ILS and LOC of an "ILS OR LOC" plate) produce
+        # identical sequences.
+        sequences = []
+        for fixes in raw_sequences:
+            if not fixes:
+                continue
+            key = (airport, procedure, fixes[0][0])
+            if key in emitted:
+                continue
+            emitted.add(key)
+            sequences.append(fixes)
 
         var = variation.get(airport)
         for fixes in sequences:
@@ -588,7 +633,9 @@ def build_sequences(legs, metafile, terminal=None, enroute=None, variation=None)
                 continue
             initial_fix = fixes[0][0]
             prev_ll = None
-            for i, (fix, altitude, fix_key) in enumerate(fixes, start=1):
+            for i, (fix, altitude, alt_type, altitude2, fix_key) in enumerate(
+                fixes, start=1
+            ):
                 ll = lookup_coords(terminal, enroute, airport, fix_key)
                 lat = "" if ll is None else round(ll[0], 6)
                 lon = "" if ll is None else round(ll[1], 6)
@@ -601,7 +648,8 @@ def build_sequences(legs, metafile, terminal=None, enroute=None, variation=None)
                 if ll is not None:
                     prev_ll = ll
                 yield (airport, procedure, initial_fix, i, fix,
-                       "" if altitude is None else altitude, lat, lon, bearing)
+                       "" if altitude is None else altitude, alt_type,
+                       "" if altitude2 is None else altitude2, lat, lon, bearing)
 
 
 def _clean(value):
@@ -616,10 +664,12 @@ def parse_procedures(cifp_path=CIFP_FILE, metafile_path=METAFILE, out_path=OUTPU
     with open(out_path, "w+", newline="") as fh:
         writer = csv.writer(fh)
         for row in build_sequences(legs, metafile, terminal, enroute, variation):
-            airport, procedure, initial_fix, seq, fix, altitude, lat, lon, bearing = row
+            (airport, procedure, initial_fix, seq, fix, altitude, alt_type,
+             altitude2, lat, lon, bearing) = row
             writer.writerow([
                 _clean(airport), _clean(procedure), _clean(initial_fix),
-                seq, _clean(fix), _clean(altitude), lat, lon, bearing,
+                seq, _clean(fix), _clean(altitude), alt_type,
+                _clean(altitude2), lat, lon, bearing,
             ])
 
 

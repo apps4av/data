@@ -34,5 +34,5 @@ CREATE TABLE airways(name Text, sequence Text, Latitude float, Longitude float);
 CREATE TABLE geo(Latitude float, Longitude float, height float, declination float);
 .import geo.csv geo
 
-CREATE TABLE cifp(LocationID Text, procedure Text, ifix Text, sequence Text, fix Text, altitude Text, latitude float, longitude float, bearing float);
+CREATE TABLE cifp(LocationID Text, procedure Text, ifix Text, sequence Text, fix Text, altitude Text, altitude_type Text, altitude2 Text, latitude float, longitude float, bearing float);
 .import procedures.csv cifp
