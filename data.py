@@ -11,7 +11,9 @@ all_charts = [
     "https://aeronav.faa.gov/d-tpp/" + cycle.get_cycle_download() + "/xml_data/d-TPP_Metafile.xml"
 ]
 
+print(all_charts)
 common.download_list(all_charts)
+
 
 # copy all files from legacy folder
 common.call_script("cp legacy/* .")
