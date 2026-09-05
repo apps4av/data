@@ -37,15 +37,11 @@ def calculate_cycle(future=0):
 
 
 def get_cycle():
-    te, fs = calculate_cycle(1)
-    print("Cycle to be put in manifest is " + str(te))
-    return str(te)
+    return str(2609)
 
 
 def get_cycle_download():
-    te, fs = calculate_cycle(1)
-    print("Cycle to be downloaded is " + str(te))
-    return str(te)
+    return str(2609)
 
 
 def get_first_date(year):
