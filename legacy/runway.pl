@@ -35,9 +35,9 @@ while (<FILE>) {
 		$len = ltrim(rtrim(substr($_, 23, 5)));
 		$wid = ltrim(rtrim(substr($_, 28, 4)));
 		$type = ltrim(rtrim(substr($_, 32, 12)));
-		$run0 = ltrim(rtrim(substr($_, 65, 3)));
+		$run0 = ltrim(rtrim(substr($_, 70, 3)));
 
-		$lat = ltrim(rtrim(substr($_, 88, 14)));
+		$lat = ltrim(rtrim(substr($_, 93, 14)));
 		if(length($lat) == 14) {
 			$latd = ltrim(rtrim(substr($lat, 0, 2))) / 1;
 			$latm = ltrim(rtrim(substr($lat, 3, 2))) / 60;
@@ -55,7 +55,7 @@ while (<FILE>) {
 		}
 		$run0lat = $lt;
 
-		$lon = ltrim(rtrim(substr($_, 115, 15)));
+		$lon = ltrim(rtrim(substr($_, 120, 15)));
 		if(length($lon) == 15) {
 			$lond = ltrim(rtrim(substr($lon, 0, 3))) / 1;
 			$lonm = ltrim(rtrim(substr($lon, 4, 2))) / 60;
@@ -73,16 +73,16 @@ while (<FILE>) {
 		}
 		$run0lon = $ln;
 
-		$run0elev = ltrim(rtrim(substr($_, 142, 7)));
-		$run0true = ltrim(rtrim(substr($_, 68, 3)));
-		$run0dt = ltrim(rtrim(substr($_, 217, 4)));
-		$run0light = ltrim(rtrim(substr($_, 237, 8)));
-		$run0ils = ltrim(rtrim(substr($_, 71, 10)));
-		$run0vgsi = ltrim(rtrim(substr($_, 228, 5)));
-		$run0pattern = ltrim(rtrim(substr($_, 81, 1)));
-		$run1 = ltrim(rtrim(substr($_, 287, 3)));
+		$run0elev = ltrim(rtrim(substr($_, 147, 7)));
+		$run0true = ltrim(rtrim(substr($_, 73, 3)));
+		$run0dt = ltrim(rtrim(substr($_, 222, 4)));
+		$run0light = ltrim(rtrim(substr($_, 242, 8)));
+		$run0ils = ltrim(rtrim(substr($_, 76, 10)));
+		$run0vgsi = ltrim(rtrim(substr($_, 233, 5)));
+		$run0pattern = ltrim(rtrim(substr($_, 86, 1)));
+		$run1 = ltrim(rtrim(substr($_, 292, 3)));
 		
-		$lat = ltrim(rtrim(substr($_, 310, 14)));
+		$lat = ltrim(rtrim(substr($_, 315, 14)));
 		if(length($lat) == 14) {
 			$latd = ltrim(rtrim(substr($lat, 0, 2))) / 1;
 			$latm = ltrim(rtrim(substr($lat, 3, 2))) / 60;
@@ -100,7 +100,7 @@ while (<FILE>) {
 		}
 		$run1lat = $lt;
 
-		$lon = ltrim(rtrim(substr($_, 337, 15)));
+		$lon = ltrim(rtrim(substr($_, 342, 15)));
 		if(length($lon) == 15) {
 			$lond = ltrim(rtrim(substr($lon, 0, 3))) / 1;
 			$lonm = ltrim(rtrim(substr($lon, 4, 2))) / 60;
@@ -118,13 +118,13 @@ while (<FILE>) {
 		}
 		$run1lon = $ln;
 		
-		$run1elev = ltrim(rtrim(substr($_, 364, 7)));
-		$run1true = ltrim(rtrim(substr($_, 290, 3)));
-		$run1dt =  ltrim(rtrim(substr($_, 439, 4)));
-		$run1light = ltrim(rtrim(substr($_, 459, 8)));
-		$run1ils = ltrim(rtrim(substr($_, 293, 10)));
-		$run1vgsi = ltrim(rtrim(substr($_, 450, 5)));
-		$run1pattern = ltrim(rtrim(substr($_, 303, 1)));
+		$run1elev = ltrim(rtrim(substr($_, 369, 7)));
+		$run1true = ltrim(rtrim(substr($_, 295, 3)));
+		$run1dt =  ltrim(rtrim(substr($_, 444, 4)));
+		$run1light = ltrim(rtrim(substr($_, 464, 8)));
+		$run1ils = ltrim(rtrim(substr($_, 298, 10)));
+		$run1vgsi = ltrim(rtrim(substr($_, 455, 5)));
+		$run1pattern = ltrim(rtrim(substr($_, 308, 1)));
 		print "$id,$len,$wid,$type,$run0,$run1,$run0lat,$run1lat,$run0lon,$run1lon,$run0elev,$run1elev,$run0true,$run1true,$run0dt,$run1dt,$run0light,$run1light,$run0ils,$run1ils,$run0vgsi,$run1vgsi,$run0pattern,$run1pattern\n";
 	}
 }
