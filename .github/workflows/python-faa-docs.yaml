@@ -1,0 +1,75 @@
+# FAA reference PDFs (AIM, 14 CFR, handbooks, ACS, advisory circulars) as one zip per
+# category, built by faa_docs.py. Runs on the same schedule and gate as the DATA workflow
+# (python-data.yaml), so it builds in the same release week, and uploads the zips to the
+# same staging folder as databases.zip. Keep the cron entries in sync with gate.py.
+
+name: FAA DOCS
+
+on:
+  schedule:
+    - cron: "0 11 * * 0"  # 07:00 America/New_York during EDT
+    - cron: "0 12 * * 0"  # 07:00 America/New_York during EST
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build now, bypassing the Sunday 7am ET / release-week gate"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Decide whether to build
+      id: check
+      env:
+        EVENT: ${{ github.event_name }}
+        FORCE: ${{ inputs.force }}
+        SCHEDULE: ${{ github.event.schedule }}
+      run: python3 gate.py >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install ghostscript
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ghostscript
+    - name: Restore downloaded PDFs
+      uses: actions/cache@v4
+      with:
+        path: faa_docs_cache
+        key: faa-docs-${{ github.run_id }}
+        restore-keys: |
+          faa-docs-
+    - name: Build FAA documents
+      run: |
+        python3 faa_docs.py
+
+    - name: Upload release
+      uses: actions/upload-artifact@v4
+      with:
+        name: FAA_DOCS
+        path: |
+          FAA_*.zip
+
+    - name: SSH to mamba
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: apps4av.org
+        username: apps4av
+        password: ${{ secrets.MAMBA_PASSWORD }}
+        port: 22
+        source: "FAA_AIM.zip,FAA_CFR14.zip,FAA_HANDBOOKS.zip,FAA_HANDBOOKS_SPECIALTY.zip,FAA_ACS.zip,FAA_AC.zip"
+        target: /home/apps4av/mamba.dreamhosters.com/new/staging
