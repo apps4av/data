@@ -35,3 +35,4 @@ CREATE TABLE geo(Latitude float, Longitude float, height float, declination floa
 
 CREATE TABLE cifp(LocationID Text, procedure Text, ifix Text, sequence Text, fix Text, altitude Text, altitude_type Text, altitude2 Text, latitude float, longitude float, bearing float);
 .import procedures.csv cifp
+CREATE INDEX idx_cifp_loc ON cifp(LocationID);
