@@ -23,6 +23,13 @@ errors, so curl with a browser user agent is used, same as common.py). If
 ghostscript (gs) is installed, PDFs over 10 MB are recompressed when that makes
 them smaller.
 
+Re-running is how updates are picked up: every document is resolved again (the
+newest revision link on the FAA pages) and a cached PDF is only reused if it came
+from the same URL and the server still reports the same Last-Modified / size
+(kept in a "<file>.pdf.src" note beside it). A new edition, a new revision letter
+or a re-published file is downloaded again; documents with no note (older cache)
+are downloaded once more.
+
 Usage:
     python3 faa_docs.py                    # download + build all zips in the current folder
     python3 faa_docs.py --list             # resolve URLs only, print the manifests
@@ -57,7 +64,7 @@ USER_AGENT = (
 REFERER = "https://www.faa.gov/"
 
 FAA = "https://www.faa.gov"
-AIM_URL = FAA + "/air_traffic/publications/media/aim.pdf"
+AIM_PAGE = FAA + "/air_traffic/publications"      # lists the current AIM PDF (media/aim.pdf is a frozen 2017 copy)
 HB_PAGE = FAA + "/regulations_policies/handbooks_manuals/aviation"
 HB_FILES = HB_PAGE.replace(FAA, FAA + "/sites/faa.gov/files")
 ACS_PAGE = FAA + "/training_testing/testing/acs"
@@ -115,6 +122,30 @@ def is_pdf_url(url: str) -> bool:
     with _head_lock:
         _head_cache[url] = ok
     return ok
+
+
+def remote_fingerprint(url: str) -> str:
+    """Last-Modified and size the server reports for url ("" if it does not say).
+    Stored next to every cached download: when the FAA replaces a PDF under the same
+    URL (aim.pdf style) the fingerprint changes and the cached copy is refreshed."""
+    for attempt in range(4):
+        with _head_slots:
+            try:
+                out = subprocess.run(
+                    _curl_base() + ["-I", "-m", "60", "-o", "/dev/null", "-D", "-", url],
+                    capture_output=True, text=True, timeout=120).stdout
+            except Exception:
+                out = ""
+        blocks = [b for b in re.split(r"\r?\n\r?\n", out) if b.strip().startswith("HTTP")]
+        if blocks:                                     # last block = final response after redirects
+            hdr = {}
+            for line in blocks[-1].splitlines()[1:]:
+                k, _, v = line.partition(":")
+                hdr[k.strip().lower()] = v.strip()
+            if blocks[-1].split()[1] == "200":
+                return "%s|%s" % (hdr.get("last-modified", ""), hdr.get("content-length", ""))
+        time.sleep(3 * (attempt + 1))
+    return ""
 
 
 def get_text(url: str) -> str:
@@ -277,6 +308,30 @@ def scraped(page: str, pattern: str, fallback: str, name: str) -> Callable[[], O
     return resolve
 
 
+def aim_basic(name: str) -> Callable[[], Optional[tuple]]:
+    """Current AIM (Basic with all changes), scraped from the FAA publications page: the
+    list item "Aeronautical Information Manual (AIM) Basic with Change ..." that links a PDF.
+    The FAA's markup breaks that file name at its commas into several links
+    (<a href="media/AIM%20Basic%20w%20Chg1">, <a href="Chg2">, <a href="and%20Chg3...pdf">);
+    the links of the item are put back together. A single normal PDF link works too."""
+    def resolve():
+        html = get_text(AIM_PAGE)
+        # the FAA leaves this <li> unclosed, so an item ends at the next tag that starts or ends a list part
+        for li in re.findall(r"<li>(.*?)(?=<li>|</li>|<ul>|</ul>|$)", html, flags=re.IGNORECASE | re.DOTALL):
+            text = re.sub(r"<[^>]+>", "", li)
+            if not re.search(r"Aeronautical Information Manual \(AIM\) Basic", text):
+                continue
+            hrefs = [h.replace("&amp;", "&") for h in re.findall(r'href="([^"#]+)"', li, flags=re.IGNORECASE)
+                     if not h.lower().endswith((".html", ".htm"))]
+            if not hrefs or not hrefs[-1].lower().endswith(".pdf"):
+                continue
+            url = urllib.parse.urljoin(AIM_PAGE + "/", ",%20".join(hrefs))
+            if is_pdf_url(url):
+                return url, name
+        return None          # not found: fail instead of shipping an older AIM
+    return resolve
+
+
 def latest_handbook(pdf_pattern: str, pages: List[str], fallback: str, name: str,
                     page_pattern: Optional[str] = None) -> Callable[[], Optional[tuple]]:
     """Newest edition of a handbook whose file/page name carries the revision.
@@ -436,19 +491,13 @@ def resolve_ac(number: str, pref: str, title: str) -> Callable[[], Optional[tupl
 
 # ---- ACS --------------------------------------------------------------------
 
-ACS_FALLBACK = [
-    "private_airplane_acs_6", "instrument_rating_airplane_acs_8", "commercial_airplane_acs_7",
-    "atp_airplane_acs_11", "cfi_airplane_acs_25", "private_helicopter_acs_15",
-    "instrument_helicopter_acs_14", "commercial_helicopter_acs_16", "cfi_helicopter_acs_29",
-    "private_pl_acs_13", "instrument_pl_acs_3", "commercial_pl_acs_2", "atp_pl_acs_17",
-    "cfi_pl_acs_27", "cfii_pl_acs_28", "uas_acs", "acs_companion_guide_pilots",
-    "acs_knowledge_test_table",
-]
 ACS_SKIP = re.compile(r"briefing|brochure|faq|amt|mechanic|mcn|_SFC_", re.IGNORECASE)
 
 
 def acs_items() -> List[Item]:
-    """Every pilot ACS linked from the FAA ACS page (curated list as fallback)."""
+    """Every pilot ACS linked from the FAA ACS page. There is no built-in list: when the
+    FAA publishes a new ACS (or a new revision number in a file name) it is picked up
+    from the page on the next run."""
     urls = []
     try:
         page_links = scrape_pdf_links(ACS_PAGE)
@@ -460,8 +509,7 @@ def acs_items() -> List[Item]:
                 and not ACS_SKIP.search(base):
             urls.append(url)
     if not urls:
-        print("  NOTE: could not read the ACS page, using the built-in (possibly outdated) list", flush=True)
-        urls = ["%s/%s.pdf" % (ACS_PAGE, n) for n in ACS_FALLBACK]
+        sys.exit("No ACS PDFs found on %s (page layout changed?)." % ACS_PAGE)
     items = []
     for url in sorted(set(urls)):
         name = urllib.parse.unquote(url.rsplit("/", 1)[-1])
@@ -562,8 +610,8 @@ def build_catalog(only: Optional[List[str]]) -> List[Item]:
 
     items: List[Item] = []
     if wanted("AIM"):
-        items.append(Item("AIM", fixed(AIM_URL, "AIM_Aeronautical_Information_Manual.pdf"),
-                          "aim.pdf"))
+        items.append(Item("AIM", aim_basic("AIM_Aeronautical_Information_Manual.pdf"),
+                          "AIM Basic with changes"))
     if wanted("CFR14"):
         for part, title in CFR14_PARTS:
             name = "14CFR_Part_%03d_%s.pdf" % (part, title)
@@ -588,6 +636,21 @@ def build_catalog(only: Optional[List[str]]) -> List[Item]:
 # run
 # ----------------------------------------------------------------------------
 
+def read_source(dest: str):
+    """(url, fingerprint) a cached PDF was downloaded from, None if unknown (old cache)."""
+    try:
+        with open(dest + ".src") as f:
+            url, fingerprint = (f.read().split("\n") + [""])[:2]
+        return url, fingerprint
+    except OSError:
+        return None
+
+
+def write_source(dest: str, url: str, fingerprint: str) -> None:
+    with open(dest + ".src", "w") as f:
+        f.write("%s\n%s\n" % (url, fingerprint))
+
+
 def process(item: Item, work: str, prefix: str, list_only: bool) -> Item:
     try:
         resolved = item.resolve()
@@ -601,10 +664,15 @@ def process(item: Item, work: str, prefix: str, list_only: bool) -> Item:
     dest = os.path.join(work, item.folder, item.name)
     if list_only:
         item.status = "ok"
-    elif os.path.isfile(dest) and os.path.getsize(dest) >= MIN_PDF_BYTES:
-        item.status = "cached"
+        return item
+    fingerprint = remote_fingerprint(item.url)
+    if (os.path.isfile(dest) and os.path.getsize(dest) >= MIN_PDF_BYTES
+            and read_source(dest) == (item.url, fingerprint)):
+        item.status = "cached"        # same URL and the server's copy did not change
     else:
         err = download_pdf(item.url, dest)
+        if not err:
+            write_source(dest, item.url, fingerprint)
         item.status, item.error = ("failed", err) if err else ("ok", "")
     return item
 
